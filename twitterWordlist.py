@@ -166,21 +166,22 @@ def trimNonAsciiChars(unicodeStr):
       asciiStr += char
   return asciiStr
 
-def clean_tweets(tweets):
+def clean_tweets(tweets, minCharLen=3):
     cleaned = list()
     if isinstance(tweets,list):
         for tweet in tweets:
-            cleaned.extend(clean_tweets(tweet))
+            cleaned.extend(clean_tweets(tweet, minCharLen))
     elif isinstance(tweets,str):
         # supports unicode, stripping those characters out
         tweet = remove_punctuation(trimNonAsciiChars(tweets))
         # trim any potential hashtags
         for word in tokenizer.tokenize(tweet.lstrip("#")):
             word = word.lower()
-            if word not in exclusions:
+            if word not in exclusions and len(word) > minCharLen:
                 cleaned.append(word)
     else:
         TypeError("tweets is expected to be a string or list of strings")
+    # could dedupe here, but then wouldn't get the word count
     return cleaned
 
 def expand_location_search(place):
@@ -211,7 +212,7 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
     else:
         return None
 
-def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,global_trends=True,number=100):
+def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,global_trends=True,number=100,minCharLen=3):
     #• Ability to time box the search (between date a and b)
 	#• Add the ability to do this overtime
 	#	○ Either aggregate, running daily, or find a way to query historical data
@@ -225,7 +226,7 @@ def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,g
         #	○ get info on most popular/recent tweets using those (non-account specific)
         # get the user's profile appending to user_info
         user_info = "get it"
-        allWords.extend(clean_tweets(user_info))
+        allWords.extend(clean_tweets(user_info, minCharLen))
     # if specified, get geo data, if not, attempt to get current location
     if location is None:
         try:
@@ -238,11 +239,12 @@ def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,g
     # this will attempt to expand out from location specified to country in reverse order
     if location is not None:
         location_trends = get_geo_trends(api,location)
-        allWords.extend(clean_tweets([t for t in location_trends]))
+        allWords.extend(clean_tweets([t for t in location_trends], minCharLen))
     # get worldwide trends
     if global_trends == True:
         trends = api.GetTrendsCurrent()
-        allWords.extend(clean_tweets([t.name for t in trends]))
+        allWords.extend(clean_tweets([t.name for t in trends]), minCharLen)
+    # this will effectively handle deduplication and frequency of occurence ordering
     return Counter(allWords).most_common(number)
 
 def Main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None):
