@@ -1,10 +1,14 @@
 #/usr/bin/python
 import twitter
 import string
+import getpass
+import requests
 from nltk.corpus import stopwords
 from nltk.tokenize import TweetTokenizer
 from nltk import download as nltk_download
 from collections import Counter
+from geopy.geocoders import Nominatim
+
 
 #class TwitterWordlist(twitter.Api):
 #    def __init__(self):
@@ -155,14 +159,23 @@ exclusions = stopwords.words('english')
 def remove_punctuation(text):
     return text.translate(str.maketrans('','',string.punctuation))
 
+def trimNonAsciiChars(unicodeStr):
+  asciiStr = str()
+  for char in unicodeStr:
+    if ord(char) <= 126:
+      asciiStr += char
+  return asciiStr
+
 def clean_tweets(tweets):
     cleaned = list()
     if isinstance(tweets,list):
         for tweet in tweets:
             cleaned.extend(clean_tweets(tweet))
     elif isinstance(tweets,str):
-        tweet = remove_punctuation(tweets)
-        for word in tokenizer.tokenize(tweet):
+        # supports unicode, stripping those characters out
+        tweet = remove_punctuation(trimNonAsciiChars(tweets))
+        # trim any potential hashtags
+        for word in tokenizer.tokenize(tweet.lstrip("#")):
             word = word.lower()
             if word not in exclusions:
                 cleaned.append(word)
@@ -170,14 +183,40 @@ def clean_tweets(tweets):
         TypeError("tweets is expected to be a string or list of strings")
     return cleaned
 
-# ideally... could multithread this to speed up generation
+def expand_location_search(place):
+    # format for address is <address number>, <street>, <city>, <county>, <state>, <zip>, <country>
+    if place.count(",") >= 1:
+        return ",".join(place.split(", ")[2:] if place.count(",") >=6 else place.split(", ")[1:])
+    else:
+        return None
 
-def generate_word_list(startDate=None,endDate=None,user=None,geo=None,number=100):
-    #TODO: how many tweets/topics should we get per query?
+# ideally... could multithread this to speed up generation
+def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
+    if api is not None and place is not None:
+        geo_trends = list()
+        geolocator = Nominatim(user_agent=user_agent)
+        location = geolocator.geocode(place)
+        if location.address is None:
+            ValueError("Could not find {0}. Please check spelling and try again.".format(place))
+        resp = api._RequestUrl(f'{api.base_url}/trends/closest.json',verb='GET',data={'lat':location.latitude,"long":location.longitude})
+        try:
+            woeid = resp.json()[0]['woeid']
+            print("{0} - {1}".format(place, woeid))
+            geo_trends = api.GetTrendsWoeid(woeid=woeid)
+            geo_trends.extend(geo_trends)
+            geo_trends.extend(get_geo_trends(api,expand_location_search(location.address)))
+        except:
+            KeyError("Was unable to derive the woeid for {0}".format(place))
+        return geo_trends
+    else:
+        return None
+
+def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,global_trends=True,number=100):
     #• Ability to time box the search (between date a and b)
 	#• Add the ability to do this overtime
 	#	○ Either aggregate, running daily, or find a way to query historical data
     allWords = list()
+    geolookup_url = "http://ipinfo.io"
     # if specified, get user specific data
     if user is not None:
        	#• search by from/to account
@@ -186,15 +225,35 @@ def generate_word_list(startDate=None,endDate=None,user=None,geo=None,number=100
         #	○ get info on most popular/recent tweets using those (non-account specific)
         # get the user's profile appending to user_info
         user_info = "get it"
-        allWords += clean_tweets(user_info)
-    # if specified, get geo data
-    if geo is not None:
-        # get trending topics for that geolocation
-        # could be timeboxed
-        # if possible, expand scope (coord->state->country)
-        geo_trends = "get it"
-        allWords.extend(clean_tweets(geo_trends))
+        allWords.extend(clean_tweets(user_info))
+    # if specified, get geo data, if not, attempt to get current location
+    if location is None:
+        try:
+            iplookup = requests.get(geolookup_url).json()
+            location = "{0}, {1}, {2}, {3}".format(iplookup['city'],iplookup['region'],iplookup['postal'],iplookup['country'])
+        except:
+            print("Unable to get geo IP information; skipping location based trend lookup")
+            location = None
+    # location can be full address, city, county, state, zip, or country
+    # this will attempt to expand out from location specified to country in reverse order
+    if location is not None:
+        location_trends = get_geo_trends(api,location)
+        allWords.extend(clean_tweets([t for t in location_trends]))
     # get worldwide trends
-    trends = "get it"
-    allWords.extend(clean_tweets(trends))
+    if global_trends == True:
+        trends = api.GetTrendsCurrent()
+        allWords.extend(clean_tweets([t.name for t in trends]))
     return Counter(allWords).most_common(number)
+
+def Main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None):
+    if consumer_key is None or access_token_key is None:
+        ValueError("Consumer key and access token key are required")
+    if consumer_secret is None and consumer_key is not None:
+        consumer_secret = getpass.getpass("Please enter your consumer secret:\n")
+    if access_token_secret is None and access_token_key is not None:
+        access_token_secret = getpass.getpass("Please enter your access token secret:\n")
+    api = twitter.Api(consumer_key=consumer_key, consumer_secret=consumer_secret,
+        access_token_key=access_token_key,access_token_secret=access_token_secret)
+    if api.VerifyCredentials().id is None:
+        ValueError("The credentials specified are incorrect, try again")
+    generate_word_list(api)
