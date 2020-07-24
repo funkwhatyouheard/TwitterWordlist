@@ -3,6 +3,7 @@ import twitter
 import string
 import getpass
 import requests
+import re
 from nltk.corpus import stopwords
 from nltk.tokenize import TweetTokenizer
 from nltk import download as nltk_download
@@ -212,7 +213,10 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
     else:
         return None
 
-def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,global_trends=True,number=100,minCharLen=3):
+def generate_word_list(api,since=None,until=None,username=None,location=None,global_trends=True,number=100,minCharLen=3):
+    date_regex = r"\d{4}(-\d{2}){2}"
+    if (since is not None and not re.match(date_regex,since)) or (until is not None and not re.match(date_regex,until)):
+        ValueError("Dates must be specified in yyyy-mm-dd format")
     #• Ability to time box the search (between date a and b)
 	#• Add the ability to do this overtime
 	#	○ Either aggregate, running daily, or find a way to query historical data
@@ -221,11 +225,23 @@ def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,g
     # if specified, get user specific data
     if user is not None:
        	#• search by from/to account
-        #• Get user's profile: include username/profile description
         #• get info on account's hashtag
         #	○ get info on most popular/recent tweets using those (non-account specific)
-        # get the user's profile appending to user_info
-        user_info = "get it"
+        user_info = list()
+        # get basic information about the user
+        user = api.GetUser(screen_name=username)
+        user_info.extend([user.location,user.name,user.description,user.status.text])
+        # get information for user's location (if available)
+        if user.location is not None:
+            user_location_trends = get_geo_trends(api,user.location)
+            user_info.extend([t.name for t in user_location_trends])
+        # get timeline information for the user
+        user_timeline = api.GetUserTimeline(user_id=user.id)
+        user_info.extend([s.text for s in user_timeline])
+        # get favorites
+        faves = api.GetFavorites(user_id=user.id)
+        user_info.extend([s.text for s in faves])
+        # maybe pull out hashtags and mentioned users and get info on them
         allWords.extend(clean_tweets(user_info, minCharLen))
     # if specified, get geo data, if not, attempt to get current location
     if location is None:
@@ -239,12 +255,13 @@ def generate_word_list(api,startDate=None,endDate=None,user=None,location=None,g
     # this will attempt to expand out from location specified to country in reverse order
     if location is not None:
         location_trends = get_geo_trends(api,location)
-        allWords.extend(clean_tweets([t for t in location_trends], minCharLen))
+        allWords.extend(clean_tweets([t.name for t in location_trends], minCharLen))
     # get worldwide trends
     if global_trends == True:
         trends = api.GetTrendsCurrent()
         allWords.extend(clean_tweets([t.name for t in trends]), minCharLen)
     # this will effectively handle deduplication and frequency of occurence ordering
+    # TODO: see about using pandas (think that's what it's for) to generate a frequency analysis plot of some sort
     return Counter(allWords).most_common(number)
 
 def Main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None):
