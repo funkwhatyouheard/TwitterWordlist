@@ -61,7 +61,6 @@ def get_location(place,user_agent="Twitter wordlist builder"):
     location = geolocator.geocode(place)
     return location
 
-# ideally... could multithread this to speed up generation
 def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
     if api is not None and place is not None:
         geo_trends = list()
@@ -71,7 +70,7 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
         resp = api._RequestUrl(f'{api.base_url}/trends/closest.json',verb='GET',data={'lat':location.latitude,"long":location.longitude})
         try:
             woeid = resp.json()[0]['woeid']
-            print("Pulling trends for place: {0} - woeid: {1}".format(place, woeid))
+            print("Pulling trends for: {0} - woeid: {1}".format(place, woeid))
             geo_trends = api.GetTrendsWoeid(woeid=woeid)
             geo_trends.extend(geo_trends)
             geo_trends.extend(get_geo_trends(api,expand_location_search(location.address)))
@@ -91,7 +90,7 @@ def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurences']):
     return converted
 
 def generate_word_list(api,since=None,until=None,username=None,lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,
-count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,number=100,minwordlen=3,
+count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
 outputdir=None,all=False):
     global tokenizer
     global exclusions
@@ -106,19 +105,14 @@ outputdir=None,all=False):
     if all:
         lists = subscriptions = mentions = tweets_to = tweets_from = currentlocation = globaltrends = loc_popular = loc_recent = True
     # TODO: evaluate if date/time boxing is practical to implement
-    if (since is not None and not re.match(date_regex,since)) or (until is not None and not re.match(date_regex,until)):
-        ValueError("Dates must be specified in yyyy-mm-dd format")
-    #• Ability to time box the search (between date a and b)
-	#• Add the ability to do this overtime
-	#	○ Either aggregate, running daily, or find a way to query historical data
+    #if (since is not None and not re.match(date_regex,since)) or (until is not None and not re.match(date_regex,until)):
+    #    ValueError("Dates must be specified in yyyy-mm-dd format")
     allWords = list()
     # TODO: I think black hills mentioned a more precise way to get geolocation... look into that
     # TODO: also, seems like twitter has a built in API to handle lookup by IP and lat/long to woeid
     geolookup_url = "http://ipinfo.io"
-    # if specified, get user specific data
+    # **** USER INFO ****
     if username is not None:
-        #• get info on account's hashtag
-        #	○ get info on most popular/recent tweets using those (non-account specific)
         user_info = list()
         # **** PROFILE INFO ****
         # get basic information about the user
@@ -130,6 +124,11 @@ outputdir=None,all=False):
             print("Found associated location for {0}.".format(username))
             user_location_trends = get_geo_trends(api,user.location)
             user_info.extend([t.name for t in user_location_trends])
+            print("Getting mix of popular and recent tweets for {0} in {1} mile radius".format(user.location,radius))
+            loc = get_location(user.location)
+            search_geocode = [loc.latitude,loc.longitude,"{0}mi".format(radius)]
+            user_location_tweets = api.GetSearch(geocode=search_geocode,count=count)
+            user_info.extend([t.text for t in user_location_tweets])
         # get timeline information for the user
         print("Pulling timeline info for {0}".format(username))
         user_timeline = api.GetUserTimeline(user_id=user.id,count=count)
@@ -158,7 +157,10 @@ outputdir=None,all=False):
         # **** LISTS ****
         if lists:
             print("Pulling list timelines for {0}".format(username))
-            lists = api.GetLists(user_id=user.id,count=count)
+            # TODO: add count back in for list
+            # currently, GetLists says it supports count and cursor but function doesn't have those defined...
+            # opening bug/submitting pull request
+            lists = api.GetLists(user_id=user.id)
             listTimelines = list()
             for entry in lists:
                 listTimelines.extend(api.GetListTimeline(list_id=entry.id,count=count))
@@ -171,6 +173,7 @@ outputdir=None,all=False):
                 subTimelines.extend(api.GetListTimeline(list_id=entry.id,count=count))
             user_info.extend([l.text for l in subTimelines])
         allWords.extend(clean_tweets(user_info, minwordlen))
+    # **** LOCATION/TREND DATA ****
     # if specified, get geo data, if not, attempt to get current location
     if location is None and currentlocation:
         try:
@@ -183,22 +186,25 @@ outputdir=None,all=False):
     # location can be full address, city, county, state, zip, or country
     # this will attempt to expand out from location specified to country in reverse order
     if location is not None:
-        if loc_recent or loc_popular:
-            loc = get_location(location)
-            search_geocode = [loc.latitude,loc.longitude,"{0}mi".format(radius)]
+        loc = get_location(location)
+        search_geocode = [loc.latitude,loc.longitude,"{0}mi".format(radius)]
         location_trends = get_geo_trends(api,location)
         allWords.extend(clean_tweets([t.name for t in location_trends], minwordlen))
         if loc_popular:
-            print("Pulling popular tweets for {0}".format(location))
+            print("Pulling popular tweets for {0} in {1} mile radius".format(location,radius))
             popular_tweets = api.GetSearch(geocode=search_geocode,result_type="popular",count=count)
             allWords.extend(clean_tweets([t.text for t in popular_tweets], minwordlen))
         if loc_recent:
-            print("Pulling recent tweets for {0}".format(location))
+            print("Pulling recent tweets for {0} in {1} mile radius".format(location,radius))
             recent_tweets = api.GetSearch(geocode=search_geocode,result_type="recent",count=count)
             allWords.extend(clean_tweets([t.text for t in recent_tweets], minwordlen))
+        if not loc_popular and not loc_recent:
+            print("Pulling mixture of popular and recent tweets for {0} in {1} mile radius".format(location,radius))
+            mixed_tweets = api.GetSearch(geocode=search_geocode,count=count)
+            allWords.extend(clean_tweets([t.text for t in mixed_tweets], minwordlen))
     # get worldwide trends
     if globaltrends == True:
-        print("Pulling glocal trends")
+        print("Pulling global trends")
         trends = api.GetTrendsCurrent()
         allWords.extend(clean_tweets([t.name for t in trends], minwordlen))
     # this will effectively handle deduplication and frequency of occurence ordering
@@ -218,8 +224,8 @@ outputdir=None,all=False):
             writer.writerows(outdict)
 
 def main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None,username=None,
-lists=False,subscriptions=False,count=20,outputdir="./",location=None,current_location=False,loc_popular=False,loc_recent=False,
-radius=5,globaltrends=False,minwordlen=3,all=False):
+lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,count=20,outputdir="./",location=None,
+current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,all=False):
     if consumer_key is None or access_token_key is None:
         ValueError("Consumer key and access token key are required")
     if consumer_secret is None and consumer_key is not None:
@@ -230,15 +236,14 @@ radius=5,globaltrends=False,minwordlen=3,all=False):
         access_token_key=access_token_key,access_token_secret=access_token_secret)
     if api.VerifyCredentials().id is None:
         ValueError("The credentials specified are incorrect, try again")
-    generate_word_list(api,username=username,lists=lists,subscriptions=subscriptions,count=count,outputdir=outputdir,location=location,
-    currentlocation=current_location,loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,globaltrends=globaltrends,minwordlen=minwordlen,all=all)
+    generate_word_list(api,username=username,lists=lists,subscriptions=subscriptions,mentions=mentions,tweets_to=tweets_to,tweets_from=tweets_from,
+    count=count,outputdir=outputdir,location=location,currentlocation=current_location,loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,globaltrends=globaltrends,minwordlen=minwordlen,all=all)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         add_help=False,
         description=
-        '''Parse and extract english words from trending tweets and perform frequency analysis.'''
-        '''If desirable, can specify a specific user to target as well.''',
+        '''Parse and extract english words from specific users, locations, and trends performing frequency analysis.''',
         formatter_class=lambda prog: argparse.HelpFormatter(prog,max_help_position=40)
     )
 
@@ -249,15 +254,18 @@ if __name__ == "__main__":
     parser.add_argument('-u', '--username', type=str, metavar="STRING", default=None, help="The twitter user to pull information from.")
     parser.add_argument('--lists', action='store_true', help="Pull lists created by the specified user and their timeline info.")
     parser.add_argument('-s', '--subscriptions', action='store_true', help="Pull lists subscribed to by the specified user and their timeline info.")
-    parser.add_argument('-c', '--count', type=int, metavar="INT", default=20, help="The number of results to pull from each query. Max is 200 as a lowest common denominator. (default=20)")
+    parser.add_argument('-m', '--mentions', action='store_true', help="Pulls tweets mentioning specified user.")
+    parser.add_argument('-t', '--tweets_to', action='store_true', help="Pulls tweets sent to specified user.")
+    parser.add_argument('-f', '--tweets_from', action='store_true', help="Pulls tweets sent from specified user.")
+    parser.add_argument('--count', type=int, metavar="INT", default=20, help="The number of results to pull from each query. Max is 200 as a lowest common denominator. (default=20)")
     parser.add_argument('-o', '--outputdir', type=str, metavar="STRING", default="./", help="The directory to write results to. The file name is dynamically generated based on params. (Default=./)")
     parser.add_argument('-l', '--location', type=str, metavar="STRING", default=None, help="The location to get geotrends for. Can be an address, city, county, state, or country.")
     parser.add_argument('-c', '--current_location', action='store_true', help="Attempt to retrieve current location based on IP. Explicit locations take precedence of this parameter.")
-    parser.add_argument('--loc_popular', action='store_true', help="Retrieve popular tweets in the location specified or retrieved from IP.")
-    parser.add_argument('--loc_recent', action='store_true', help="Retrieve recent tweets in the location specified or retrieved from IP.")
-    parser.add_argument('-r', '--radius', type=int, metavar="INT", default=5, help="The radius to return results for in miles if loc_popular or loc_recent are specified. (default=5)")
+    parser.add_argument('-p', '--loc_popular', action='store_true', help="Retrieve popular tweets in the location specified or retrieved from IP.")
+    parser.add_argument('-r', '--loc_recent', action='store_true', help="Retrieve recent tweets in the location specified or retrieved from IP.")
+    parser.add_argument('--radius', type=int, metavar="INT", default=5, help="The radius to return results for in miles if loc_popular or loc_recent are specified. (default=5)")
     parser.add_argument('-g', '--globaltrends', action='store_true', help="Includes global trends in the result set.")
-    parser.add_argument('-m', '--minwordlen', type=str, metavar="INT", default=3, help="The minimum length of words to append to the wordlist. (Default=3)")
+    parser.add_argument('--minwordlen', type=str, metavar="INT", default=3, help="The minimum length of words to append to the wordlist. (Default=3)")
     parser.add_argument('-a','--all', action='store_true', help="Set all options to 'True'.")
     
     if len(sys.argv) >= 2 and sys.argv[1] in ('-h','--help'):
@@ -265,8 +273,9 @@ if __name__ == "__main__":
         sys.exit(0)
 
     args = parser.parse_args()
-    main(consumer_key=args.consumer_key,consumer_secret=args.consumer_secret,access_token_key=args.access_token_key,access_token_secret=args.access_token_secret,
-    username=args.username,lists=args.lists,subscriptions=args.subscriptions,count=args.count,outputdir=args.outputdir,location=args.location,
-    current_location=args.current_location,loc_popular=args.loc_popular,loc_recent=args.loc_recent,radius=args.radius,globaltrends=args.globaltrends,minwordlen=args.minwordlen,
-    all=args.all)
+    main(consumer_key=args.consumer_key,consumer_secret=args.consumer_secret,access_token_key=args.access_token_key,
+    access_token_secret=args.access_token_secret,username=args.username,lists=args.lists,subscriptions=args.subscriptions,
+    mentions=args.mentions,tweets_to=args.tweets_to,tweets_from=args.tweets_from,count=args.count,outputdir=args.outputdir,
+    location=args.location,current_location=args.current_location,loc_popular=args.loc_popular,loc_recent=args.loc_recent,
+    radius=args.radius,globaltrends=args.globaltrends,minwordlen=args.minwordlen,all=args.all)
     sys.exit(0)
