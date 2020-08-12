@@ -42,7 +42,7 @@ def clean_tweets(tweets, minwordlen=3):
         # trim any potential hashtags
         for word in tokenizer.tokenize(tweet.lstrip("#")):
             word = word.lower()
-            if word not in exclusions and len(word) > minwordlen:
+            if word not in exclusions and len(word) > minwordlen and "http" not in word:
                 cleaned.append(word)
     else:
         TypeError("tweets is expected to be a string or list of strings")
@@ -89,8 +89,8 @@ def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurences']):
         converted.append(tmp)
     return converted
 
-def generate_word_list(api,since=None,until=None,username=None,lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,
-count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
+def generate_word_list(api,since=None,until=None,username=None,user_location=False,lists=False,subscriptions=False,mentions=False,tweets_to=False,
+tweets_from=False,count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
 outputdir=None,all=False):
     global tokenizer
     global exclusions
@@ -120,7 +120,7 @@ outputdir=None,all=False):
         user = api.GetUser(screen_name=username)
         user_info.extend([user.location,user.name,user.description,user.status.text])
         # get information for user's location (if available)
-        if user.location is not None:
+        if user.location is not None and user_location:
             print("Found associated location for {0}.".format(username))
             user_location_trends = get_geo_trends(api,user.location)
             user_info.extend([t.name for t in user_location_trends])
@@ -222,7 +222,7 @@ outputdir=None,all=False):
             writer.writeheader()
             writer.writerows(outdict)
 
-def main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None,username=None,
+def main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None,username=None,user_location=False,
 lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,count=20,outputdir="./",location=None,
 current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,all=False):
     if consumer_key is None or access_token_key is None:
@@ -251,6 +251,7 @@ if __name__ == "__main__":
     parser.add_argument('-ak', '--access_token_key', type=str, metavar="STRING", default=None, help="The twitter API accesskey.")
     parser.add_argument('-as', '--access_token_secret', type=str, metavar="STRING", default=None, help="The twitter API access secret.")
     parser.add_argument('-u', '--username', type=str, metavar="STRING", default=None, help="The twitter user to pull information from.")
+    parser.add_argument('--user_location', action='store_true', help="Attempt to pull user location data.")
     parser.add_argument('--lists', action='store_true', help="Pull lists created by the specified user and their timeline info.")
     parser.add_argument('-s', '--subscriptions', action='store_true', help="Pull lists subscribed to by the specified user and their timeline info.")
     parser.add_argument('-m', '--mentions', action='store_true', help="Pulls tweets mentioning specified user.")
@@ -273,8 +274,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(consumer_key=args.consumer_key,consumer_secret=args.consumer_secret,access_token_key=args.access_token_key,
-    access_token_secret=args.access_token_secret,username=args.username,lists=args.lists,subscriptions=args.subscriptions,
-    mentions=args.mentions,tweets_to=args.tweets_to,tweets_from=args.tweets_from,count=args.count,outputdir=args.outputdir,
-    location=args.location,current_location=args.current_location,loc_popular=args.loc_popular,loc_recent=args.loc_recent,
-    radius=args.radius,globaltrends=args.globaltrends,minwordlen=args.minwordlen,all=args.all)
+    access_token_secret=args.access_token_secret,username=args.username,user_location=args.user_location,lists=args.lists,
+    subscriptions=args.subscriptions,mentions=args.mentions,tweets_to=args.tweets_to,tweets_from=args.tweets_from,
+    count=args.count,outputdir=args.outputdir,location=args.location,current_location=args.current_location,
+    loc_popular=args.loc_popular,loc_recent=args.loc_recent,radius=args.radius,globaltrends=args.globaltrends,
+    minwordlen=args.minwordlen,all=args.all)
     sys.exit(0)
