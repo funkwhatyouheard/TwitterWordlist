@@ -98,7 +98,7 @@ outputdir=None,all=False):
     nltk_download('punkt')
     tokenizer = TweetTokenizer()
     exclusions = stopwords.words('english')
-    date_regex = r"\d{4}(-\d{2}){2}"
+    #date_regex = r"\d{4}(-\d{2}){2}"
     if count > 200:
         print("Count lowest common denominator max is 200 but specified {0}. Setting to 200.".format(count))
         count = 200
@@ -157,9 +157,8 @@ outputdir=None,all=False):
         # **** LISTS ****
         if lists:
             print("Pulling list timelines for {0}".format(username))
-            # TODO: add count back in for list
-            # currently, GetLists says it supports count and cursor but function doesn't have those defined...
-            # opening bug/submitting pull request
+            # TODO: add count back in for list when fixed
+            # https://github.com/bear/python-twitter/pull/646
             lists = api.GetLists(user_id=user.id)
             listTimelines = list()
             for entry in lists:
