@@ -61,7 +61,7 @@ def get_location(place,user_agent="Twitter wordlist builder"):
     location = geolocator.geocode(place)
     return location
 
-def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
+def get_geo_trends(api,place,user_agent="Twitter wordlist builder",expand=False):
     if api is not None and place is not None:
         geo_trends = list()
         location = get_location(place)
@@ -73,7 +73,8 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder"):
             print("Pulling trends for: {0} - woeid: {1}".format(place, woeid))
             geo_trends = api.GetTrendsWoeid(woeid=woeid)
             geo_trends.extend(geo_trends)
-            geo_trends.extend(get_geo_trends(api,expand_location_search(location.address)))
+            if expand:
+                geo_trends.extend(get_geo_trends(api,expand_location_search(location.address),expand=expand))
         except:
             KeyError("Was unable to derive the woeid for {0}".format(place))
         return geo_trends
@@ -90,11 +91,11 @@ def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurences']):
     return converted
 
 def generate_word_list(api,since=None,until=None,username=None,user_location=False,lists=False,subscriptions=False,mentions=False,tweets_to=False,
-tweets_from=False,count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
-outputdir=None,all=False,expanded_stoplist=False):
+tweets_from=False,count=20,location=None,currentlocation=False,trends=False,expand_location=False,loc_popular=False,loc_recent=False,radius=5,
+globaltrends=False,minwordlen=3,outputdir=None,all=False,alternate_stoplist=False):
     global tokenizer
     global exclusions
-    if expanded_stoplist:
+    if alternate_stoplist:
         from custom_stoplist import stoplist as exclusions
     else:
         nltk_download('stopwords')
@@ -106,7 +107,8 @@ outputdir=None,all=False,expanded_stoplist=False):
         print("Count lowest common denominator max is 200 but specified {0}. Setting to 200.".format(count))
         count = 200
     if all:
-        lists = subscriptions = mentions = tweets_to = tweets_from = currentlocation = globaltrends = loc_popular = loc_recent = True
+        user_location = lists = subscriptions = mentions = tweets_to = tweets_from = currentlocation = True
+        trends = expand_location = loc_popular = loc_recent = globaltrends = True
     # TODO: evaluate if date/time boxing is practical to implement
     #if (since is not None and not re.match(date_regex,since)) or (until is not None and not re.match(date_regex,until)):
     #    ValueError("Dates must be specified in yyyy-mm-dd format")
@@ -125,8 +127,9 @@ outputdir=None,all=False,expanded_stoplist=False):
         # get information for user's location (if available)
         if user.location is not None and user_location:
             print("Found associated location for {0}.".format(username))
-            user_location_trends = get_geo_trends(api,user.location)
-            user_info.extend([t.name for t in user_location_trends])
+            if trends:
+                user_location_trends = get_geo_trends(api,user.location,expand=expand_location)
+                user_info.extend([t.name for t in user_location_trends])
             print("Getting mix of popular and recent tweets for {0} in {1} mile radius".format(user.location,radius))
             loc = get_location(user.location)
             search_geocode = [loc.latitude,loc.longitude,"{0}mi".format(radius)]
@@ -190,8 +193,9 @@ outputdir=None,all=False,expanded_stoplist=False):
     if location is not None:
         loc = get_location(location)
         search_geocode = [loc.latitude,loc.longitude,"{0}mi".format(radius)]
-        location_trends = get_geo_trends(api,location)
-        allWords.extend(clean_tweets([t.name for t in location_trends], minwordlen))
+        if trends:
+            location_trends = get_geo_trends(api,location,expand=expand_location)
+            allWords.extend(clean_tweets([t.name for t in location_trends], minwordlen))
         if loc_popular:
             print("Pulling popular tweets for {0} in {1} mile radius".format(location,radius))
             popular_tweets = api.GetSearch(geocode=search_geocode,result_type="popular",count=count)
@@ -227,7 +231,8 @@ outputdir=None,all=False,expanded_stoplist=False):
 
 def main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None,username=None,user_location=False,
 lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,count=20,outputdir="./",location=None,
-current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,all=False,expanded_stoplist=False):
+current_location=False,trends=False,expand_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
+all=False,alternate_stoplist=False):
     if consumer_key is None or access_token_key is None:
         ValueError("Consumer key and access token key are required")
     if consumer_secret is None and consumer_key is not None:
@@ -238,9 +243,9 @@ current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=
         access_token_key=access_token_key,access_token_secret=access_token_secret)
     if api.VerifyCredentials().id is None:
         ValueError("The credentials specified are incorrect, try again")
-    generate_word_list(api,username=username,lists=lists,subscriptions=subscriptions,mentions=mentions,tweets_to=tweets_to,tweets_from=tweets_from,
-    count=count,outputdir=outputdir,location=location,currentlocation=current_location,loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,
-    globaltrends=globaltrends,minwordlen=minwordlen,all=all,expanded_stoplist=expanded_stoplist)
+    generate_word_list(api,username=username,user_location=user_location,lists=lists,subscriptions=subscriptions,mentions=mentions,tweets_to=tweets_to,
+    tweets_from=tweets_from,count=count,outputdir=outputdir,location=location,currentlocation=current_location,trends=trends,expand_location=expand_location,
+    loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,globaltrends=globaltrends,minwordlen=minwordlen,all=all,alternate_stoplist=alternate_stoplist)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -265,13 +270,15 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--outputdir', type=str, metavar="STRING", default="./", help="The directory to write results to. The file name is dynamically generated based on params. (Default=./)")
     parser.add_argument('-l', '--location', type=str, metavar="STRING", default=None, help="The location to get geotrends for. Can be an address, city, county, state, or country.")
     parser.add_argument('-c', '--current_location', action='store_true', help="Attempt to retrieve current location based on IP. Explicit locations take precedence of this parameter.")
+    parser.add_argument('--trends', action='store_true', help="Return trends for the specified (or derived) location.")
+    parser.add_argument('-e','--expand_location', action='store_true', help="Expand trends returned for broader locations. For example, specify a city and this will return city, state, and country trends.")
     parser.add_argument('-p', '--loc_popular', action='store_true', help="Retrieve popular tweets in the location specified or retrieved from IP.")
     parser.add_argument('-r', '--loc_recent', action='store_true', help="Retrieve recent tweets in the location specified or retrieved from IP.")
     parser.add_argument('--radius', type=int, metavar="INT", default=5, help="The radius to return results for in miles if loc_popular or loc_recent are specified. (default=5)")
     parser.add_argument('-g', '--globaltrends', action='store_true', help="Includes global trends in the result set.")
-    parser.add_argument('--minwordlen', type=str, metavar="INT", default=3, help="The minimum length of words to append to the wordlist. (Default=3)")
-    parser.add_argument('-a','--all', action='store_true', help="Set all options to 'True'.")
-    parser.add_argument('-e','--expanded_stoplist', action='store_true', help="Use the expanded stoplist defined in custom_stoplist.py.")
+    parser.add_argument('-w', '--minwordlen', type=str, metavar="INT", default=3, help="The minimum length of words to append to the wordlist. (Default=3)")
+    parser.add_argument('-a','--all', action='store_true', help="Set all options to 'True' excluding alternate_stoplist.")
+    parser.add_argument('--alternate_stoplist', action='store_true', help="Use the expanded stoplist defined in custom_stoplist.py.")
     
     if len(sys.argv) >= 2 and sys.argv[1] in ('-h','--help'):
         parser.print_help()
@@ -281,7 +288,7 @@ if __name__ == "__main__":
     main(consumer_key=args.consumer_key,consumer_secret=args.consumer_secret,access_token_key=args.access_token_key,
     access_token_secret=args.access_token_secret,username=args.username,user_location=args.user_location,lists=args.lists,
     subscriptions=args.subscriptions,mentions=args.mentions,tweets_to=args.tweets_to,tweets_from=args.tweets_from,
-    count=args.count,outputdir=args.outputdir,location=args.location,current_location=args.current_location,
-    loc_popular=args.loc_popular,loc_recent=args.loc_recent,radius=args.radius,globaltrends=args.globaltrends,
-    minwordlen=args.minwordlen,all=args.all,expanded_stoplist=args.expanded_stoplist)
+    count=args.count,outputdir=args.outputdir,location=args.location,current_location=args.current_location,trends=args.trends,
+    expand_location=args.expand_location,loc_popular=args.loc_popular,loc_recent=args.loc_recent,radius=int(args.radius),
+    globaltrends=args.globaltrends,minwordlen=int(args.minwordlen),all=args.all,alternate_stoplist=args.alternate_stoplist)
     sys.exit(0)
