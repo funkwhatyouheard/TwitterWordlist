@@ -91,13 +91,16 @@ def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurences']):
 
 def generate_word_list(api,since=None,until=None,username=None,user_location=False,lists=False,subscriptions=False,mentions=False,tweets_to=False,
 tweets_from=False,count=20,location=None,currentlocation=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
-outputdir=None,all=False):
+outputdir=None,all=False,expanded_stoplist=False):
     global tokenizer
     global exclusions
-    nltk_download('stopwords')
-    nltk_download('punkt')
+    if expanded_stoplist:
+        from custom_stoplist import stoplist as exclusions
+    else:
+        nltk_download('stopwords')
+        nltk_download('punkt')
+        exclusions = stopwords.words('english')
     tokenizer = TweetTokenizer()
-    exclusions = stopwords.words('english')
     #date_regex = r"\d{4}(-\d{2}){2}"
     if count > 200:
         print("Count lowest common denominator max is 200 but specified {0}. Setting to 200.".format(count))
@@ -224,7 +227,7 @@ outputdir=None,all=False):
 
 def main(consumer_key=None,consumer_secret=None,access_token_key=None,access_token_secret=None,username=None,user_location=False,
 lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False,count=20,outputdir="./",location=None,
-current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,all=False):
+current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,all=False,expanded_stoplist=False):
     if consumer_key is None or access_token_key is None:
         ValueError("Consumer key and access token key are required")
     if consumer_secret is None and consumer_key is not None:
@@ -236,7 +239,8 @@ current_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=
     if api.VerifyCredentials().id is None:
         ValueError("The credentials specified are incorrect, try again")
     generate_word_list(api,username=username,lists=lists,subscriptions=subscriptions,mentions=mentions,tweets_to=tweets_to,tweets_from=tweets_from,
-    count=count,outputdir=outputdir,location=location,currentlocation=current_location,loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,globaltrends=globaltrends,minwordlen=minwordlen,all=all)
+    count=count,outputdir=outputdir,location=location,currentlocation=current_location,loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,
+    globaltrends=globaltrends,minwordlen=minwordlen,all=all,expanded_stoplist=expanded_stoplist)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -267,6 +271,7 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--globaltrends', action='store_true', help="Includes global trends in the result set.")
     parser.add_argument('--minwordlen', type=str, metavar="INT", default=3, help="The minimum length of words to append to the wordlist. (Default=3)")
     parser.add_argument('-a','--all', action='store_true', help="Set all options to 'True'.")
+    parser.add_argument('-e','--expanded_stoplist', action='store_true', help="Use the expanded stoplist defined in custom_stoplist.py.")
     
     if len(sys.argv) >= 2 and sys.argv[1] in ('-h','--help'):
         parser.print_help()
@@ -278,5 +283,5 @@ if __name__ == "__main__":
     subscriptions=args.subscriptions,mentions=args.mentions,tweets_to=args.tweets_to,tweets_from=args.tweets_from,
     count=args.count,outputdir=args.outputdir,location=args.location,current_location=args.current_location,
     loc_popular=args.loc_popular,loc_recent=args.loc_recent,radius=args.radius,globaltrends=args.globaltrends,
-    minwordlen=args.minwordlen,all=args.all)
+    minwordlen=args.minwordlen,all=args.all,expanded_stoplist=args.expanded_stoplist)
     sys.exit(0)
