@@ -45,7 +45,7 @@ def clean_tweets(tweets, minwordlen=3):
             if word not in exclusions and len(word) > minwordlen and "http" not in word:
                 cleaned.append(word)
     else:
-        TypeError("tweets is expected to be a string or list of strings")
+        raise TypeError("tweets is expected to be a string or list of strings")
     # could dedupe here, but then wouldn't get the word count
     return cleaned
 
@@ -66,7 +66,7 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder",expand=False)
         geo_trends = list()
         location = get_location(place)
         if location.address is None:
-            ValueError("Could not find {0}. Please check spelling and try again.".format(place))
+            raise ValueError("Could not find {0}. Please check spelling and try again.".format(place))
         resp = api._RequestUrl(f'{api.base_url}/trends/closest.json',verb='GET',data={'lat':location.latitude,"long":location.longitude})
         try:
             woeid = resp.json()[0]['woeid']
@@ -76,7 +76,7 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder",expand=False)
             if expand:
                 geo_trends.extend(get_geo_trends(api,expand_location_search(location.address),expand=expand))
         except:
-            KeyError("Was unable to derive the woeid for {0}".format(place))
+            raise KeyError("Was unable to derive the woeid for {0}".format(place))
         return geo_trends
     else:
         return None
@@ -234,7 +234,7 @@ lists=False,subscriptions=False,mentions=False,tweets_to=False,tweets_from=False
 current_location=False,trends=False,expand_location=False,loc_popular=False,loc_recent=False,radius=5,globaltrends=False,minwordlen=3,
 all=False,alternate_stoplist=False):
     if consumer_key is None or access_token_key is None:
-        ValueError("Consumer key and access token key are required")
+        raise ValueError("Consumer key and access token key are required")
     if consumer_secret is None and consumer_key is not None:
         consumer_secret = getpass.getpass("Please enter your consumer secret:\n")
     if access_token_secret is None and access_token_key is not None:
@@ -242,7 +242,7 @@ all=False,alternate_stoplist=False):
     api = twitter.Api(consumer_key=consumer_key, consumer_secret=consumer_secret,
         access_token_key=access_token_key,access_token_secret=access_token_secret)
     if api.VerifyCredentials().id is None:
-        ValueError("The credentials specified are incorrect, try again")
+        raise ValueError("The credentials specified are incorrect, try again")
     generate_word_list(api,username=username,user_location=user_location,lists=lists,subscriptions=subscriptions,mentions=mentions,tweets_to=tweets_to,
     tweets_from=tweets_from,count=count,outputdir=outputdir,location=location,currentlocation=current_location,trends=trends,expand_location=expand_location,
     loc_popular=loc_popular,loc_recent=loc_recent,radius=radius,globaltrends=globaltrends,minwordlen=minwordlen,all=all,alternate_stoplist=alternate_stoplist)
