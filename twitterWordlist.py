@@ -74,7 +74,9 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder",expand=False)
             geo_trends = api.GetTrendsWoeid(woeid=woeid)
             geo_trends.extend(geo_trends)
             if expand:
-                geo_trends.extend(get_geo_trends(api,expand_location_search(location.address),expand=expand))
+                expanded = get_geo_trends(api,expand_location_search(location.address),expand=expand)
+                if expanded is not None:
+                    geo_trends.extend(expanded)
         except:
             raise KeyError("Was unable to derive the woeid for {0}".format(place))
         return geo_trends
