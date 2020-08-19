@@ -221,8 +221,8 @@ globaltrends=False,minwordlen=3,outputdir=None,all=False,alternate_stoplist=Fals
     else:
         datestr = datetime.now().isoformat()[:-7]
         filename = "{0}{1}{2}.csv".format(username+"_" if username is not None else "",location+"_" if location is not None else "",datestr)
-        # strip out potentially bad chars
-        filename = re.sub(r'[^\w\-_\.\s]','_',filename)
+        # strip out potentially bad chars and spaces b/c nobody wants that
+        filename = re.sub(r'[^\w\-\_\.]','_',filename)
         outfile = path.join(outputdir,filename)
         fieldnames = ['Word','Occurences']
         outdict = convert_tuple_to_dict(Counter(allWords).most_common(),fieldnames)
