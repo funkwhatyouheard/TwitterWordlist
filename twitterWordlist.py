@@ -83,7 +83,7 @@ def get_geo_trends(api,place,user_agent="Twitter wordlist builder",expand=False)
     else:
         return None
 
-def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurences']):
+def convert_tuple_to_dict(tuplist,fieldnames=['Word','Occurrences']):
     converted = list()
     for e in tuplist:
         tmp = dict()
@@ -215,7 +215,7 @@ globaltrends=False,minwordlen=3,outputdir=None,all=False,alternate_stoplist=Fals
         print("Pulling global trends")
         trends = api.GetTrendsCurrent()
         allWords.extend(clean_tweets([t.name for t in trends], minwordlen))
-    # this will effectively handle deduplication and frequency of occurence ordering
+    # this will effectively handle deduplication and frequency of occurrence ordering
     if outputdir is None:
         return dict(Counter(allWords).most_common())
     else:
@@ -224,7 +224,7 @@ globaltrends=False,minwordlen=3,outputdir=None,all=False,alternate_stoplist=Fals
         # strip out potentially bad chars and spaces b/c nobody wants that
         filename = re.sub(r'[^\w\-\_\.]','_',filename)
         outfile = path.join(outputdir,filename)
-        fieldnames = ['Word','Occurences']
+        fieldnames = ['Word','Occurrences']
         outdict = convert_tuple_to_dict(Counter(allWords).most_common(),fieldnames)
         with open(outfile,mode="w",encoding="UTF-8",newline='') as csvfile:
             writer = csv.DictWriter(csvfile,fieldnames=fieldnames)
